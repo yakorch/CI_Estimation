@@ -445,6 +445,12 @@ print(&quot;Real matrix and limiting probabilities: &quot;)</code></pre>
 </div>
 <div id="determining-the-sample-size" class="section level3">
 <h3>Determining the sample size</h3>
+<p><span class="math display">\[
+\Phi(- \frac{\sqrt{n} \cdot \epsilon}{\sigma}) = \frac{\alpha}{2}
+\]</span></p>
+<p><span class="math display">\[
+n = (-\frac{\Phi^{-1}(\alpha/2) \cdot \sigma} {\epsilon})^2
+\]</span></p>
 <pre class="r"><code>check_conf_level &lt;- function(n, enough, theory) {
   times &lt;- 500
   results &lt;- seq(1, times, by = 1)
@@ -524,12 +530,58 @@ generate_alot_first &lt;- function(size) {
 N &lt;- 2 * 1e4
 mean(generate_alot_first(N))</code></pre>
 <pre><code>## [1] 1007.361</code></pre>
-<p>We see that results all the time are very close. ### Find the sample
-size N which guarantees that the absolute error |θˆ−θ| of the estimate
-does not exceed 10 with confidence level of at least 95 percent.</p>
-<pre class="r"><code>enough &lt;- 3*1e4
+<p>We see that results all the time are very close.</p>
+</div>
+<div id="find-the-sample-size-n-which-guarantees-that-the-absolute-error-θˆθ-of-the-estimate-does-not-exceed-10-with-confidence-level-of-at-least-95-percent." class="section level3">
+<h3>Find the sample size N which guarantees that the absolute error
+|θˆ−θ| of the estimate does not exceed 10 with confidence level of at
+least 95 percent.</h3>
+<p><span class="math display">\[
+P(|\hat{\theta} - \theta| ≥ c) ≤ \frac{\sigma_x^2}{c^2}
+\]</span></p>
+<p><span class="math display">\[
+P(|\hat{\theta} - \theta| ≤ c) ≥  1 -\frac{\sigma_x^2}{c^2}
+\]</span></p>
+<p><span class="math display">\[
+\theta = 1000; \space c = 10
+\]</span></p>
+<p>The only missing value is <span class="math inline">\(\sigma\)</span>
+— standard deviation of <span class="math inline">\(\hat{\theta}\)</span>. The dependence between
+standard error and standard deviation is <span class="math inline">\(\sqrt{n}\)</span>. If we have the sample of size
+<span class="math inline">\(n\)</span>, then <span class="math inline">\(\sigma_x = \frac{\sigma}{\sqrt{n}},
+\sigma_x\)</span> - standard deviation of the sample.</p>
+<p><span class="math display">\[
+1 - \frac{\sigma_x}{c^2} = 0.95 =&gt; \sigma_x = c\sqrt{0.05} \approx
+2.236
+\]</span></p>
+<p><span class="math display">\[
+\sqrt{n} = \frac{\sigma}{\sigma_x}
+\]</span></p>
+<p>Seeking theoretical sigma:</p>
+<pre class="r"><code>number_of_simulations &lt;-  1*1e2
 
-times &lt;- 20
+sample_size &lt;- 0.5 * 1e3
+
+values &lt;- c(1, number_of_simulations, by=1)
+
+for (i in 1:number_of_simulations){
+  tmp &lt;- 0
+  for(j in 1:sample_size){
+    tmp &lt;- tmp + until_first_occurrence()
+  }
+  values[i] &lt;- tmp / sample_size
+}</code></pre>
+<pre class="r"><code>sd(values) * sqrt(sample_size)</code></pre>
+<pre><code>## [1] 971.8924</code></pre>
+<p><span class="math display">\[
+\sqrt{n} = \frac{1000}{2.236} \approx 447; n = 199809 \approx 2 * 10^5
+\]</span></p>
+<p>This is too large of a value because Chebyshev does not give close
+results and overestimates the answer. The real value is about 3 times
+less:</p>
+<pre class="r"><code>enough &lt;- 3.8*1e4
+
+times &lt;- 40
 res &lt;- 0
 for(i in 1:times){
   tmp &lt;- seq(1, enough, by=1)
