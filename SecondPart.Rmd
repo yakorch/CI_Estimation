@@ -1,0 +1,261 @@
+---
+---
+---
+
+```{r}
+set.seed(022)
+
+parameter <- 2.2
+lambda <- 1 / parameter
+
+n_values <- c(300, 1e3, 1e4)
+alphas <- c(.1, .05, .01)
+
+n <- n_values[1]
+exp_small <- matrix(rexp(n^2, lambda), nrow = n)
+croissant_small <- matrix(rpois(n^2, parameter), nrow = n)
+
+n <- n_values[2]
+exp_medium <- matrix(rexp(n^2, lambda), nrow = n)
+croissant_medium <- matrix(rpois(n^2, parameter), nrow = n)
+
+n <- n_values[3]
+exp_large <- matrix(rexp(n^2, lambda), nrow = n)
+croissant_large <- matrix(rpois(n^2, parameter), nrow = n)
+
+all_exp_samples <- list(exp_small, exp_medium, exp_large)
+all_croissant_samples <- list(croissant_small, croissant_medium, croissant_large)
+
+get_stats <- function(sample_means, alpha, left_border, right_border) {
+  y <- sample_means
+  den <- density(y)
+  plot(den, xlab = "Mean value")
+
+  l <- min(which(den$x >= left_border))
+  h <- max(which(den$x < right_border))
+
+  polygon(c(den$x[c(l, l:h, h)]),
+          c(0, den$y[l:h], 0),
+          col = "slateblue1")
+
+  cat("For confidence level", (1 - alpha) * 100, "% CI is [", left_border, ",", right_border, "]", "\n")
+  cat("with the length", right_border - left_border, "for the sample with size", length(sample_means),"\n")
+  cat("Fraction of means being in that interval: ", length(sample_means[sample_means >= left_border & sample_means <= right_border]) / n, "\n\n")
+
+}
+
+```
+
+# Problem 3
+
+### Chi-squared Distribution
+
+p.d.f. of sum of exponential distributions is a Gamma distribution: $f(x)=\frac{x^{n-1}e^{-\lambda \cdot x} \lambda^{n}}{Г(n)}$
+
+Then using this article: <https://search.r-project.org/CRAN/refmans/EnvStats/html/eexp.html> we see that Gamma distribution is half of Chi-squared distribution with twice as many degrees of freedom.
+
+Plug in $n = k/2$ and $\lambda = 1/2$: $f(x) = \frac{x^{k/2-1}e^{-1/2 \cdot x} \cdot \frac{1}{2}^n}{Г(k/2)}$
+
+A confidence interval turns to $[ \frac{\chi^2(2n, \alpha/2)}{2n\hat{x}} , \frac{\chi^2(2n, 1 - \alpha/2)}{2n\hat{x}} ]$
+
+```{r}
+
+for (sample in all_exp_samples){
+  n <- sqrt(length(sample))
+  # calculating means of n different realizations of size n
+  exp_cols_means <- colSums(sample) / n
+  exp_mean <- mean(exp_cols_means)
+  for (alpha in alphas) {
+    left_border <- exp_mean * qchisq(alpha / 2, 2 * n) / (2 * n)
+    right_border <- exp_mean * qchisq(1 - alpha / 2, 2 * n) / (2 * n)
+    get_stats(exp_cols_means, alpha, left_border, right_border)
+}
+}
+
+```
+
+We see that as confidence level increases, the interval becomes wider. This is because one has less room for a mistake as he needs more accuracy -- so he has to cover more values.
+
+### Normal approximation
+
+Parameters of normal distribution: $\mu = \theta$, $\sigma^2 = s^2 / n$, where $s^2 = \theta^2$ is the population variance ($Var(X) = \frac{1}{\lambda^2}, X: E(\lambda)$) $Z = \sqrt{n}(\bar{X} - \theta) / \theta$ is approximately standard normal $: N(0, 1)$: $P(|\theta - \hat{X}| < z_{\beta}\cdot \theta / \sqrt{n}) = P(|Z| \le z_{\beta}) = 2\beta - 1$
+
+```{r}
+for (sample in all_exp_samples){
+
+  n <- sqrt(length(sample))
+  exp_cols_means <- colSums(sample) / n
+  exp_mean <- mean(exp_cols_means)
+  exp_sd_sample <- sd(sample)
+
+  for (alpha in alphas) {
+    beta <- (2 - alpha) / 2
+    deviation <- (qnorm(beta) * exp_sd_sample / sqrt(n))
+    left_border <- exp_mean - deviation
+    right_border <- exp_mean + deviation
+    get_stats(exp_cols_means, alpha, left_border, right_border)
+    }
+}
+
+```
+
+### Normal approximation independent of parameter $\theta$
+
+$|\theta - \bar{X}| \le z_{\beta}\theta/\sqrt{n}$
+
+$z\_{\beta}\theta/\sqrt{n}\le \theta - \bar{X} \le z\_{\beta}\theta/\sqrt{n}$
+
+$z\_{\beta}/\sqrt{n}\le 1 - \bar{X}/\theta \le z\_{\beta}/\sqrt{n}$
+
+$z\_{\beta}/\sqrt{n} - 1\le - \bar{X}/\theta \le z\_{\beta}/\sqrt{n} -1$
+
+$\frac{z_{\beta} + \sqrt{n}}{\sqrt{n} \bar{X}}\le - 1/\theta \le \frac{z_{\beta} - \sqrt{n}}{\sqrt{n} \bar{X}}$
+
+$\frac{\sqrt{n} \bar{X}}{ \sqrt{n} + z_{\beta}} \le \theta \le \frac{\sqrt{n} \bar{X}}{ \sqrt{n} - z_{\beta}}$
+
+```{r}
+for (sample in all_exp_samples){
+
+  n <- sqrt(length(sample))
+  exp_cols_means <- colSums(sample) / n
+  exp_mean <- mean(exp_cols_means)
+
+  for (alpha in alphas) {
+    beta <- (2 - alpha) / 2
+    numerator <- sqrt(n) * exp_mean
+    left_border <- numerator / (sqrt(n) + qnorm(beta))
+    right_border <- numerator / (sqrt(n) - qnorm(beta))
+    get_stats(exp_cols_means, alpha, left_border, right_border)
+  }
+}
+```
+
+### Student's t-distribution
+
+Using formula from the lecture:\
+$\hat{X} - \frac{S}{\sqrt{n}} \cdot t_{1-\frac{\alpha}{2}}^{n-1} \le \theta \le \hat{X} + \frac{S}{\sqrt{n}} \cdot t_{1-\frac{\alpha}{2}}^{n-1}$
+
+Here $S$ stands for the best estimation of the standard deviation one can get (since one has no information about the whole population) $S^2 = \frac{1}{n-1} \sum_{i} {(\hat{X} - X_i)}^2$
+
+```{r}
+for (sample in all_exp_samples){
+
+  n <- sqrt(length(sample))
+  exp_cols_means <- colSums(sample) / n
+  exp_mean <- mean(exp_cols_means)
+  exp_sd_means <- sd(exp_cols_means)
+
+  for (alpha in alphas) {
+    deviation <- exp_sd_means * qt(1 - alpha / 2, n - 1)
+    left_border <- exp_mean - deviation
+    right_border <- exp_mean + deviation
+    get_stats(exp_cols_means, alpha, left_border, right_border)
+  }
+
+}
+```
+
+##### In all tested cases all approaches did great. But the most universal for general use is the Student's t-distribution. The accuracy was very similar in all cases. So the question is more about what data one has to manipulate with it correctly and make correct predictions. And if sample is big enough, the precision is going to be great regardless of the chosen method.
+
+# Problem 4
+
+### Repeat parts (2)--(4) of Problem 3 (with corresponding amendments) for a Poisson distribution.
+
+### Normal approximation
+
+Parameters of normal distribution: $\mu = \theta$, $\sigma^2 = s^2 / n$, where $s^2 = \theta$ is the population variance ($Var(X) = E(X) = {\lambda}$). $Z := \sqrt{n}(\bar{X} - \theta) / \sigma$ is approximately standard normal $: N(0, 1)$.$P(|\theta - \hat{X}| < z_{\beta}\cdot \sigma / \sqrt{n}) = P(|Z| \le z_{\beta}) = 2\beta - 1$, in other words,$\theta$ is with probability $2\beta - 1$ within $X ± z_{\beta}\sqrt{\theta} \sqrt{n}$.
+
+```{r}
+for (sample in all_croissant_samples){
+
+  n <- sqrt(length(sample))
+  croissant_cols_means <- colSums(sample) / n
+  croissant_mean <- mean(croissant_cols_means)
+  croissant_sd_sample <- sd(sample)
+
+  for (alpha in alphas) {
+    beta <- (2 - alpha) / 2
+    deviation <- (qnorm(beta) * croissant_sd_sample / sqrt(n))
+    left_border <- croissant_mean - deviation
+    right_border <- croissant_mean + deviation
+    get_stats(croissant_cols_means, alpha, left_border, right_border)
+  }
+
+}
+```
+
+### Normal approximation independent of parameter $\theta$
+
+The confidence interval constructed above uses the unknown variance $s^2 = θ^2$ and is of little use in practice. Instead, we can solve the double inequality for $θ$ and get another confidence interval of confidence level $2β −1$ that is independent of the unknown parameter.
+
+$$
+|\theta - \bar{X}| \le z_{\beta}\sigma/\sqrt{n}
+$$
+
+$$
+\theta = \sigma^2 => \sigma = \sqrt{\theta}
+$$
+
+$$
+-\frac{z_{\beta}\sqrt{\theta}}{\sqrt{n}}\le \theta - \bar{X} \le \frac{z_{\beta}\sqrt{\theta}}{\sqrt{n}}
+$$
+
+$$
+...\\
+...\\...
+$$
+
+$$
+|\sqrt{\theta} - \frac{\sqrt{\frac{z^2_\beta}{n}} + 4\bar{X}}{2}| \le \frac{z_\beta}{2\sqrt{n}}
+$$
+
+The rest is easy as all Probability and Statistics course in general.
+
+```{r}
+for (sample in all_croissant_samples){
+
+  n <- sqrt(length(sample))
+  croissant_cols_means <- colSums(sample) / n
+  croissant_mean <- mean(croissant_cols_means)
+
+  for (alpha in alphas) {
+    beta <- (2 - alpha) / 2
+    z_val <- qnorm(beta)
+
+    common <- sqrt(z_val^2 / n + 4 * croissant_mean ) / 2
+    deviation <- 0.5 * z_val / sqrt(n)
+
+    left_border <- (common - deviation) ^ 2
+    right_border <- (common + deviation) ^ 2
+    get_stats(croissant_cols_means, alpha, left_border, right_border)
+  }
+
+}
+```
+
+### Student's t-distribution
+
+More universal approach to get rid of the dependence on $θ$ in the previous task is to estimate $s$ via the sample standard error and use approximation of $\bar{X}$ via Student t-distribution. Using formula from the lecture:\
+$\hat{X} - \frac{S}{\sqrt{n}} \cdot t_{1-\frac{\alpha}{2}}^{n-1} \le \theta \le \hat{X} + \frac{S}{\sqrt{n}} \cdot t_{1-\frac{\alpha}{2}}^{n-1}$
+
+Here $S$ stands for the best estimation of the standard deviation one can get (since one has no information about the whole population) $S^2 = \frac{1}{n-1} \sum_{i} {(\hat{X} - X_i)}^2$
+
+```{r}
+for (sample in all_croissant_samples){
+
+  n <- sqrt(length(sample))
+  croissant_cols_means <- colSums(sample) / n
+  croissant_mean <- mean(croissant_cols_means)
+  croissant_sd_means <- sd(croissant_cols_means)
+
+  for (alpha in alphas) {
+    deviation <- croissant_sd_means * qt(1 - alpha / 2, n - 1)
+    left_border <- croissant_mean - deviation
+    right_border <- croissant_mean + deviation
+    get_stats(croissant_cols_means, alpha, left_border, right_border)
+  }
+
+}
+```
+
+For Poisson distribution the conclusions are pretty similar. All approaches performed good in all of the tests. However, the Student's t-distribution is the most widely applicable for general use. In every instance, the accuracy was remarkably consistent. So the question is more about what data one has to work with in order to make accurate predictions. Furthermore, regardless of the method used, if the sample is large enough, the precision will be good enough.
